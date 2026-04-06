@@ -1,0 +1,23 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task: build
+
+  build:
+    desc: "Builds the WinRT DLL and pure Go app"
+    env:
+      CGO_ENABLED: 0
+    cmds:
+      - echo "Compiling C++"
+      - cl /nologo /LD /EHsc /std:c++17 cpp/media.cpp windowsapp.lib /Fobuild/ /link /out:build/media.dll
+      - echo "Building app"
+      - go build -o build/scrobbler.exe main.go
+      - echo "Build complete"
+
+  clean:
+    desc: "Removes compiled files"
+    cmds:
+      - cmd: del scrobbler.exe media.dll media.obj media.exp media.lib
+        ignore_error: true
