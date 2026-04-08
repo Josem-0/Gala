@@ -5,9 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"gala/config"
 	"net/http"
 	"net/url"
-	"scrobbler/config"
 	"sort"
 	"strings"
 )

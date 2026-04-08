@@ -3,9 +3,9 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"gala/discord"
+	"gala/music"
 	"os"
-	"scrobbler/discord"
-	"scrobbler/music"
 	"time"
 )
 

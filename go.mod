@@ -1,4 +1,4 @@
-module scrobbler
+module gala
 
 go 1.26.1
 

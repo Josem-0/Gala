@@ -22,4 +22,4 @@ tasks:
     desc: "Build for release (No terminal, with Icon)"
     deps: [prep]
     cmds:
-      - go build -ldflags="-H windowsgui -s -w" -o build/scrobbler.exe main.go
+      - go build -ldflags="-H windowsgui -s -w" -o build/Gala.exe main.go

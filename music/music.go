@@ -3,8 +3,8 @@ package music
 import (
 	"bytes"
 	"fmt"
+	"gala/config"
 	"runtime"
-	"scrobbler/config"
 	"strings"
 	"sync"
 	"syscall"

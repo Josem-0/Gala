@@ -3,12 +3,12 @@ package main
 import (
 	_ "embed"
 	"fmt"
+	"gala/config"
+	"gala/lastfm"
+	"gala/music"
+	"gala/services"
 	"os/exec"
 	"runtime"
-	"scrobbler/config"
-	"scrobbler/lastfm"
-	"scrobbler/music"
-	"scrobbler/services"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -28,7 +28,8 @@ func onReady() {
 	}
 
 	systray.SetIcon(iconData)
-	systray.SetTitle("Scrobbler")
+	systray.SetTitle("Gala")
+	systray.SetTooltip("Gala")
 	mStatus, mAuth, mDiscord, mLogout, mQuit := setupTrayMenu(conf)
 
 	updateAuthUI(conf, mAuth, mLogout)

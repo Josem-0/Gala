@@ -3,10 +3,10 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"gala/config"
 	"net/http"
 	"net/url"
 	"regexp"
-	"scrobbler/config"
 	"sync"
 	"time"
 )

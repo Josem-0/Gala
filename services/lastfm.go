@@ -2,8 +2,8 @@ package services
 
 import (
 	"fmt"
-	"scrobbler/lastfm"
-	"scrobbler/music"
+	"gala/lastfm"
+	"gala/music"
 	"strconv"
 	"time"
 )
