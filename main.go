@@ -14,6 +14,9 @@ import (
 	"github.com/getlantern/systray"
 )
 
+//go:embed icon.ico
+var iconData []byte
+
 func main() {
 	systray.Run(onReady, onExit)
 }
@@ -24,6 +27,7 @@ func onReady() {
 		fmt.Printf("Config error: %v\n", err)
 	}
 
+	systray.SetIcon(iconData)
 	systray.SetTitle("Scrobbler")
 	mStatus, mAuth, mDiscord, mLogout, mQuit := setupTrayMenu(conf)
 

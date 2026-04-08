@@ -3,21 +3,23 @@ version: '3'
 tasks:
   default:
     cmds:
-      - task: build
+      - task: release
 
-  build:
-    desc: "Builds the WinRT DLL and pure Go app"
-    env:
-      CGO_ENABLED: 0
+  prep:
+    internal: true
     cmds:
-      - echo "Compiling C++"
+      - powershell -Command "if (!(Test-Path build)) { New-Item -ItemType Directory -Path build }"
+      - echo "Compiling DLL"
       - cl /nologo /LD /EHsc /std:c++17 cpp/media.cpp windowsapp.lib /Fobuild/ /link /out:build/media.dll
-      - echo "Building app"
-      - go build -o build/scrobbler.exe main.go
-      - echo "Build complete"
 
-  clean:
-    desc: "Removes compiled files"
+  debug:
+    desc: "Build with terminal for debugging"
+    deps: [prep]
     cmds:
-      - cmd: del scrobbler.exe media.dll media.obj media.exp media.lib
-        ignore_error: true
+      - go build -o build/scrobbler_debug.exe main.go
+
+  release:
+    desc: "Build for release (No terminal, with Icon)"
+    deps: [prep]
+    cmds:
+      - go build -ldflags="-H windowsgui -s -w" -o build/scrobbler.exe main.go
