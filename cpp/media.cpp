@@ -6,6 +6,10 @@
 using namespace winrt;
 using namespace Windows::Media::Control;
 
+// Cache these statically so they only initialize ONCE
+static bool isInitialized = false;
+static GlobalSystemMediaTransportControlsSessionManager manager = nullptr;
+
 extern "C" __declspec(dllexport) void GetCurrentMedia(
     char* titleBuf, int titleLen, 
     char* artistBuf, int artistLen,
@@ -17,13 +21,20 @@ extern "C" __declspec(dllexport) void GetCurrentMedia(
     if (titleLen > 0) titleBuf[0] = '\0';
     if (artistLen > 0) artistBuf[0] = '\0';
     if (albumLen > 0) albumBuf[0] = '\0';
+    if (appLen > 0) appBuf[0] = '\0';
     *positionTicks = 0;
     *durationTicks = 0;
     *playbackStatus = 0;
 
     try {
-        init_apartment();
-        auto manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+        if (!isInitialized) {
+            init_apartment();
+            manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+            isInitialized = true;
+        }
+
+        if (!manager) return;
+
         auto session = manager.GetCurrentSession();
         
         if (session) {
@@ -45,5 +56,6 @@ extern "C" __declspec(dllexport) void GetCurrentMedia(
             *durationTicks = timeline.EndTime().count();
             *playbackStatus = (int)playback.PlaybackStatus();
         }
-    } catch (...) {}
+    } catch (...) {
+    }
 }
