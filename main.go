@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os/exec"
+	"runtime"
 	"scrobbler/config"
 	"scrobbler/lastfm"
 	"scrobbler/music"
@@ -13,135 +14,153 @@ import (
 	"github.com/getlantern/systray"
 )
 
-var iconData []byte
-
-var LASTFM_API_KEY = ""
-var LASTFM_SECRET = ""
-
 func main() {
 	systray.Run(onReady, onExit)
 }
 
 func onReady() {
-	//systray.SetIcon(iconData)
-	systray.SetTitle("Scrobbler")
-	systray.SetTooltip("wa")
-
-	//Tray menu
-	mStatus := systray.AddMenuItem("Status: Idle", "Current scrobbling status")
-	mStatus.Disable()
-	systray.AddSeparator()
-	mAuth := systray.AddMenuItem("Login to last.fm", "Authenticate via browser")
-	mLogout := systray.AddMenuItem("Logout", "Close the current lastfm session")
-	mLogout.Disable()
-	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("Quit", "Close the app")
-
-	conf, err := config.LoadConfig()
-
-	if err == nil && conf.LastFmApiKey == "" || conf.LastFmSecret == "" {
-		config.SaveConfig(conf)
-		exec.Command("cmd", "/c", "start", config.GetConfigPath()).Run()
-
-	}
-
-	if err == nil && conf.LastFmSessionKey != "" {
-		mAuth.SetTitle("Logged in as: " + conf.LastFmUsername)
-		mAuth.Disable()
-		mLogout.Enable()
-	}
-
-	for conf.LastFmApiKey == "" || conf.LastFmSecret == "" {
-		time.Sleep(2 * time.Second)
-		conf, _ = config.LoadConfig()
-		// we hold the program hostage until the key and secret are provided on the config file
-	}
-
-	LASTFM_API_KEY = conf.LastFmApiKey
-	LASTFM_SECRET = conf.LastFmSecret
-
-	go func() {
-		for {
-			select {
-			case <-mAuth.ClickedCh:
-				attempLogin(mAuth, mLogout)
-
-			case <-mQuit.ClickedCh:
-				systray.Quit()
-				return
-			case <-mLogout.ClickedCh:
-				logout(mAuth, mLogout)
-			}
-		}
-	}()
-
-	go handleTrackEvent(conf, mStatus)
-
-	go runScrobblerBackground(conf)
-
-	go music.MonitorMusic(mStatus, conf)
-}
-
-func runScrobblerBackground(conf *config.Config) {
-	for {
-		track := music.GetTrack()
-
-		services.Manager.ProcessScrobble(track, conf.LastFmSessionKey)
-
-		time.Sleep(1 * time.Second)
-	}
-}
-
-func handleTrackEvent(conf *config.Config, mStatus *systray.MenuItem) {
-	for track := range music.TrackEventChan {
-		if track.IsPlaying {
-			mStatus.SetTitle(track.Title)
-		} else {
-			fmt.Printf("⏸️ Event: Paused %s\n", track.Title)
-		}
-	}
-}
-
-func attempLogin(mAuth *systray.MenuItem, mLogout *systray.MenuItem) {
 	conf, err := config.LoadConfig()
 	if err != nil {
-		fmt.Println("Error loading config:", err)
+		fmt.Printf("Config error: %v\n", err)
+	}
+
+	systray.SetTitle("Scrobbler")
+	mStatus, mAuth, mDiscord, mLogout, mQuit := setupTrayMenu(conf)
+
+	updateAuthUI(conf, mAuth, mLogout)
+
+	go music.MonitorMusic(mStatus, conf)
+	go handleEvents(conf, mStatus, mDiscord)
+	go handleMenuClicks(mAuth, mLogout, mQuit, mDiscord, conf)
+}
+
+func setupTrayMenu(conf *config.Config) (*systray.MenuItem, *systray.MenuItem, *systray.MenuItem, *systray.MenuItem, *systray.MenuItem) {
+	mStatus := systray.AddMenuItem("Status: Idle", "Current status")
+	mStatus.Disable()
+	systray.AddSeparator()
+
+	mAuth := systray.AddMenuItem("Login to last.fm", "Authenticate")
+	mDiscord := systray.AddMenuItemCheckbox("Enable Discord RPC", "Toggle Discord", conf.GetPresenceCheck())
+	mLogout := systray.AddMenuItem("Logout", "Close session")
+
+	systray.AddSeparator()
+	mQuit := systray.AddMenuItem("Quit", "Close app")
+
+	return mStatus, mAuth, mDiscord, mLogout, mQuit
+}
+
+func updateAuthUI(conf *config.Config, mAuth, mLogout *systray.MenuItem) {
+	if conf.GetSessionKey() != "" {
+		mAuth.SetTitle("Logged in as: " + conf.GetUsername())
+		mAuth.Disable()
+		mLogout.Enable()
+	} else {
+		mAuth.SetTitle("Login to last.fm")
+		mAuth.Enable()
+		mLogout.Disable()
+	}
+}
+
+func handleEvents(conf *config.Config, mStatus *systray.MenuItem, mDiscord *systray.MenuItem) {
+	discordS := services.NewDiscordService(conf.GetDiscordAppId())
+
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case track := <-music.TrackEventChan:
+			runLogic(track, conf, mStatus, mDiscord, discordS)
+
+		case <-ticker.C:
+			current := music.GetTrack()
+			if current.Title != "" {
+				runLogic(current, conf, mStatus, mDiscord, discordS)
+			}
+		}
+	}
+}
+
+func runLogic(track music.TrackInfo, conf *config.Config, mStatus *systray.MenuItem, mDiscord *systray.MenuItem, ds *services.DiscordService) {
+	if track.IsPlaying {
+		mStatus.SetTitle(track.Title)
+	} else {
+		mStatus.SetTitle("Paused")
+	}
+
+	ds.Update(track, mDiscord.Checked())
+
+	if conf.GetSessionKey() != "" {
+		services.Manager.ProcessScrobble(track, conf.GetSessionKey())
+	}
+}
+
+func handleMenuClicks(mAuth, mLogout, mQuit, mDiscord *systray.MenuItem, conf *config.Config) {
+	for {
+		select {
+		case <-mAuth.ClickedCh:
+			updated, _ := config.LoadConfig()
+			conf.SetApiKey(updated.GetApiKey())
+			conf.SetSecret(updated.GetSecrect())
+
+			if conf.GetApiKey() == "" {
+				openConfigJSON()
+			} else {
+				attemptLogin(mAuth, mLogout, conf)
+			}
+
+		case <-mDiscord.ClickedCh:
+			updated, _ := config.LoadConfig()
+			conf.SetDiscordAppID(updated.GetDiscordAppId())
+
+			if mDiscord.Checked() {
+				mDiscord.Uncheck()
+				conf.SetPresenceCheck(false)
+			} else {
+				if conf.GetDiscordAppId() == "" {
+					openConfigJSON()
+					mDiscord.Uncheck()
+				} else {
+					mDiscord.Check()
+					conf.SetPresenceCheck(true)
+				}
+			}
+
+		case <-mLogout.ClickedCh:
+			conf.SetSessionKey("")
+			conf.SetUsername("")
+			updateAuthUI(conf, mAuth, mLogout)
+
+		case <-mQuit.ClickedCh:
+			systray.Quit()
+			return
+		}
+	}
+}
+
+func attemptLogin(mAuth, mLogout *systray.MenuItem, conf *config.Config) {
+	token, err := lastfm.StartAuthServer(conf.GetApiKey())
+	if err != nil {
 		return
 	}
 
-	token, _ := lastfm.StartAuthServer(LASTFM_API_KEY)
-	session, user, err := lastfm.FetchSessionKey(token, LASTFM_API_KEY, LASTFM_SECRET)
-
+	session, user, err := lastfm.FetchSessionKey(token, conf.GetApiKey(), conf.GetSecrect())
 	if err != nil {
-		fmt.Errorf("something wrong happend : %s", err)
+		return
 	}
 
 	conf.SetSessionKey(session)
 	conf.SetUsername(user)
 
-	mAuth.SetTitle("Logged in as: " + user)
-	mAuth.Disable()
-	mLogout.Enable()
-
-}
-
-func logout(mAuth *systray.MenuItem, mLogout *systray.MenuItem) {
-
-	conf, err := config.LoadConfig()
-	if err != nil {
-		fmt.Println("Error loading config:", err)
-		return
-	}
-
-	conf.SetSessionKey("")
-	conf.SetUsername("")
-
-	mAuth.SetTitle("Login to last.fm")
-	mAuth.Enable()
-	mLogout.Disable()
-
+	updateAuthUI(conf, mAuth, mLogout)
 }
 
 func onExit() {
-	fmt.Println("Closing down")
+}
+
+func openConfigJSON() {
+	path := config.GetConfigPath()
+	if runtime.GOOS == "windows" {
+		_ = exec.Command("cmd", "/c", "start", path).Run()
+	}
 }

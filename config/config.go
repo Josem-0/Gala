@@ -12,8 +12,32 @@ type Config struct {
 	LastFmUsername   string `json:"lastfm_username"`
 	LastFmApiKey     string `json:"lastfm_apikey"`
 	LastFmSecret     string `json:"lastfm_secret"`
+	DiscordAppID     string `json:"discord_app_id"`
+	DoPresence       bool   `json:"discord_presence_toggle"`
 
 	mu sync.RWMutex `json:"-"`
+}
+
+func CreateDefaultConfig(path string) (*Config, error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+
+	// Define your default values
+	defaultConf := &Config{
+		LastFmSessionKey: "",
+		LastFmUsername:   "",
+		LastFmApiKey:     "",
+		LastFmSecret:     "",
+		DiscordAppID:     "",
+		DoPresence:       false,
+	}
+
+	data, _ := json.MarshalIndent(defaultConf, "", "  ")
+	err := os.WriteFile(path, data, 0644)
+
+	return defaultConf, err
 }
 
 func GetConfigPath() string {
@@ -37,7 +61,10 @@ func LoadConfig() (*Config, error) {
 	data, err := os.ReadFile(GetConfigPath())
 
 	if err != nil {
-		return c, err
+		if os.IsNotExist(err) {
+			return CreateDefaultConfig(GetConfigPath())
+		}
+		return nil, err
 	}
 
 	err = json.Unmarshal(data, c)
@@ -56,6 +83,30 @@ func (c *Config) GetUsername() string {
 	return c.LastFmUsername
 }
 
+func (c *Config) GetApiKey() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.LastFmApiKey
+}
+
+func (c *Config) GetSecrect() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.LastFmSecret
+}
+
+func (c *Config) GetDiscordAppId() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.DiscordAppID
+}
+
+func (c *Config) GetPresenceCheck() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.DoPresence
+}
+
 func (c *Config) SetSessionKey(key string) error {
 	c.mu.Lock()
 	c.LastFmSessionKey = key
@@ -67,6 +118,38 @@ func (c *Config) SetSessionKey(key string) error {
 func (c *Config) SetUsername(user string) error {
 	c.mu.Lock()
 	c.LastFmUsername = user
+	c.mu.Unlock()
+
+	return SaveConfig(c)
+}
+
+func (c *Config) SetApiKey(apikey string) error {
+	c.mu.Lock()
+	c.LastFmApiKey = apikey
+	c.mu.Unlock()
+
+	return SaveConfig(c)
+}
+
+func (c *Config) SetSecret(secret string) error {
+	c.mu.Lock()
+	c.LastFmSecret = secret
+	c.mu.Unlock()
+
+	return SaveConfig(c)
+}
+
+func (c *Config) SetDiscordAppID(appid string) error {
+	c.mu.Lock()
+	c.DiscordAppID = appid
+	c.mu.Unlock()
+
+	return SaveConfig(c)
+}
+
+func (c *Config) SetPresenceCheck(doPresence bool) error {
+	c.mu.Lock()
+	c.DoPresence = doPresence
 	c.mu.Unlock()
 
 	return SaveConfig(c)

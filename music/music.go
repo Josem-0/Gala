@@ -64,12 +64,12 @@ func MonitorMusic(statusItem *systray.MenuItem, conf *config.Config) {
 	var lastTitle, lastArtist string
 	var lastPlayState bool
 
-	for {
-		titleBuf := make([]byte, 256)
-		artistBuf := make([]byte, 256)
-		albumBuf := make([]byte, 256)
-		appBuf := make([]byte, 256)
+	titleBuf := make([]byte, 256)
+	artistBuf := make([]byte, 256)
+	albumBuf := make([]byte, 256)
+	appBuf := make([]byte, 256)
 
+	for {
 		var positionTicks, durationTicks int64
 
 		getMediaProc.Call(
@@ -97,21 +97,19 @@ func MonitorMusic(statusItem *systray.MenuItem, conf *config.Config) {
 		songChanged := Title != lastTitle || Artist != lastArtist
 		statusChanged := IsPlaying != lastPlayState
 
-		UpdateTrack(Title, Artist, Album, AppID, Position, Duration, IsPlaying)
-
 		if songChanged || statusChanged {
-			lastTitle = Title
-			lastArtist = Artist
-			lastPlayState = IsPlaying
-
 			UpdateTrack(Title, Artist, Album, AppID, Position, Duration, IsPlaying)
 
 			if Title != "" && isAllowedApp(AppID) {
-				TrackEventChan <- GetTrack()
+				select {
+				case TrackEventChan <- GetTrack():
+				default:
+
+				}
 			}
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 }
 

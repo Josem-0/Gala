@@ -9,10 +9,11 @@ import (
 )
 
 type ScrobbleManager struct {
-	currentTrackID    string
-	hasScrobbled      bool
-	hasSentNowPlaying bool
-	trackStartTime    int64
+	currentTrackID      string
+	hasScrobbled        bool
+	hasSentNowPlaying   bool
+	lastCheckTime       int64
+	accumulatedPlayTime time.Duration
 }
 
 var Manager = &ScrobbleManager{}
@@ -62,15 +63,23 @@ func ScrobbleTrack(track music.TrackInfo, timestamp int64, sessionKey string) er
 
 func (m *ScrobbleManager) ProcessScrobble(track music.TrackInfo, session string) {
 	uniqueID := track.Artist + " - " + track.Title
+	now := time.Now().Unix()
 
 	if uniqueID != m.currentTrackID {
 		m.currentTrackID = uniqueID
 		m.hasScrobbled = false
 		m.hasSentNowPlaying = false
-		m.trackStartTime = time.Now().Unix()
+		m.accumulatedPlayTime = 0
+		m.lastCheckTime = now
 	}
 
-	if track.IsPlaying && !m.hasSentNowPlaying {
+	delta := now - m.lastCheckTime
+	m.lastCheckTime = now
+	if track.IsPlaying {
+		m.accumulatedPlayTime += time.Duration(delta) * time.Second
+	}
+
+	if track.IsPlaying && !m.hasSentNowPlaying && session != "" {
 		m.hasSentNowPlaying = true
 		go UpdatedNowPlaying(track, session)
 	}
@@ -79,20 +88,14 @@ func (m *ScrobbleManager) ProcessScrobble(track music.TrackInfo, session string)
 		return
 	}
 
-	playThreshold := track.Duration / 2
-	maxThreshold := 4 * time.Minute
-
-	if playThreshold > maxThreshold {
-		playThreshold = maxThreshold
+	limit := track.Duration / 2
+	if limit > (4 * time.Minute) {
+		limit = 4 * time.Minute
 	}
 
-	if track.Position >= playThreshold {
+	if m.accumulatedPlayTime >= limit || track.Position >= limit {
 		m.hasScrobbled = true
-		go func() {
-			err := ScrobbleTrack(track, m.trackStartTime, session)
-			if err != nil {
-				fmt.Println("SCrobbled failed:", err)
-			}
-		}()
+		startTime := now - int64(m.accumulatedPlayTime.Seconds())
+		go ScrobbleTrack(track, startTime, session)
 	}
 }

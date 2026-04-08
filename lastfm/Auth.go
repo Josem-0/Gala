@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"time"
 )
 
 func OpenBrowser(url string) {
@@ -30,7 +31,7 @@ func StartAuthServer(apiKey string) (string, error) {
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		t := r.URL.Query().Get("token")
 		if t != "" {
-			fmt.Fprintf(w, "<h1>Login Successful!</h1><p>You can close this tab now.</p>")
+			fmt.Fprintf(w, "<h1>Login Successful!</h1>")
 			tokenC <- t
 		}
 	})
@@ -40,9 +41,12 @@ func StartAuthServer(apiKey string) (string, error) {
 	authURL := fmt.Sprintf("https://www.last.fm/api/auth/?api_key=%s&cb=http://localhost:8080/callback", apiKey)
 	OpenBrowser(authURL)
 
-	token := <-tokenC
-
-	server.Shutdown(context.Background())
-
-	return token, nil
+	select {
+	case token := <-tokenC:
+		server.Shutdown(context.Background())
+		return token, nil
+	case <-time.After(2 * time.Minute):
+		server.Shutdown(context.Background())
+		return "", fmt.Errorf("authentication timed out")
+	}
 }
