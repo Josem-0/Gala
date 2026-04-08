@@ -7,15 +7,20 @@ import (
 	"gala/lastfm"
 	"gala/music"
 	"gala/services"
+	"os"
 	"os/exec"
 	"runtime"
 	"time"
 
 	"github.com/getlantern/systray"
+	"golang.org/x/sys/windows/registry"
 )
 
 //go:embed icon.ico
 var iconData []byte
+
+const RegistryPath = `Software\Microsoft\Windows\CurrentVersion\Run`
+const AppName = "GalaScrobbler"
 
 func main() {
 	systray.Run(onReady, onExit)
@@ -30,28 +35,29 @@ func onReady() {
 	systray.SetIcon(iconData)
 	systray.SetTitle("Gala")
 	systray.SetTooltip("Gala")
-	mStatus, mAuth, mDiscord, mLogout, mQuit := setupTrayMenu(conf)
+	mStatus, mAuth, mDiscord, mStart, mLogout, mQuit := setupTrayMenu(conf)
 
 	updateAuthUI(conf, mAuth, mLogout)
 
 	go music.MonitorMusic(mStatus, conf)
 	go handleEvents(conf, mStatus, mDiscord)
-	go handleMenuClicks(mAuth, mLogout, mQuit, mDiscord, conf)
+	go handleMenuClicks(mAuth, mLogout, mQuit, mDiscord, mStart, conf)
 }
 
-func setupTrayMenu(conf *config.Config) (*systray.MenuItem, *systray.MenuItem, *systray.MenuItem, *systray.MenuItem, *systray.MenuItem) {
+func setupTrayMenu(conf *config.Config) (*systray.MenuItem, *systray.MenuItem, *systray.MenuItem, *systray.MenuItem, *systray.MenuItem, *systray.MenuItem) {
 	mStatus := systray.AddMenuItem("Status: Idle", "Current status")
 	mStatus.Disable()
 	systray.AddSeparator()
 
 	mAuth := systray.AddMenuItem("Login to last.fm", "Authenticate")
 	mDiscord := systray.AddMenuItemCheckbox("Enable Discord RPC", "Toggle Discord", conf.GetPresenceCheck())
+	mStart := systray.AddMenuItemCheckbox("Run at Startup", "Launch on login", IsAutostartEnabled())
 	mLogout := systray.AddMenuItem("Logout", "Close session")
 
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit", "Close app")
 
-	return mStatus, mAuth, mDiscord, mLogout, mQuit
+	return mStatus, mAuth, mDiscord, mStart, mLogout, mQuit
 }
 
 func updateAuthUI(conf *config.Config, mAuth, mLogout *systray.MenuItem) {
@@ -100,7 +106,7 @@ func runLogic(track music.TrackInfo, conf *config.Config, mStatus *systray.MenuI
 	}
 }
 
-func handleMenuClicks(mAuth, mLogout, mQuit, mDiscord *systray.MenuItem, conf *config.Config) {
+func handleMenuClicks(mAuth, mLogout, mQuit, mDiscord, mStart *systray.MenuItem, conf *config.Config) {
 	for {
 		select {
 		case <-mAuth.ClickedCh:
@@ -131,6 +137,15 @@ func handleMenuClicks(mAuth, mLogout, mQuit, mDiscord *systray.MenuItem, conf *c
 				}
 			}
 
+		case <-mStart.ClickedCh:
+			if mStart.Checked() {
+				mStart.Uncheck()
+				SetAutostart(false)
+			} else {
+				mStart.Check()
+				SetAutostart(true)
+			}
+
 		case <-mLogout.ClickedCh:
 			conf.SetSessionKey("")
 			conf.SetUsername("")
@@ -158,6 +173,32 @@ func attemptLogin(mAuth, mLogout *systray.MenuItem, conf *config.Config) {
 	conf.SetUsername(user)
 
 	updateAuthUI(conf, mAuth, mLogout)
+}
+
+func SetAutostart(enabled bool) error {
+	k, err := registry.OpenKey(registry.CURRENT_USER, RegistryPath, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+
+	if enabled {
+		executable, _ := os.Executable()
+		return k.SetStringValue(AppName, executable)
+	} else {
+		return k.DeleteValue(AppName)
+	}
+}
+
+func IsAutostartEnabled() bool {
+	k, err := registry.OpenKey(registry.CURRENT_USER, RegistryPath, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	defer k.Close()
+
+	_, _, err = k.GetStringValue(AppName)
+	return err == nil
 }
 
 func onExit() {
