@@ -100,7 +100,7 @@ func MonitorMusic(statusItem *systray.MenuItem, conf *config.Config) {
 		if songChanged || statusChanged {
 			UpdateTrack(Title, Artist, Album, AppID, Position, Duration, IsPlaying)
 
-			if Title != "" && isAllowedApp(AppID) {
+			if Title != "" && IsAllowedApp(AppID) {
 				select {
 				case TrackEventChan <- GetTrack():
 				default:
@@ -113,7 +113,7 @@ func MonitorMusic(statusItem *systray.MenuItem, conf *config.Config) {
 	}
 }
 
-func isAllowedApp(appId string) bool {
+func IsAllowedApp(appId string) bool {
 	appLower := strings.ToLower(appId)
 
 	allowed := []string{
