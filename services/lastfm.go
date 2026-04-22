@@ -30,14 +30,13 @@ func UpdatedNowPlaying(trackinfo music.TrackInfo, sessionKey string) error {
 		"sk":     sessionKey,
 	}
 
-	if music.IsAllowedApp(trackinfo.AppID) {
-		_, err := lastfm.PostLastfm(params)
-		if err != nil {
-			fmt.Println("Failed to update Now Playing:", err)
-			return err
-		}
-		fmt.Printf("Last.fm: Now Playing -> %s\n", trackinfo.Title)
+	_, err := lastfm.PostLastfm(params)
+	if err != nil {
+		fmt.Println("Failed to update Now Playing:", err)
+		return err
 	}
+	fmt.Printf("Last.fm: Now Playing -> %s\n", trackinfo.Title)
+
 	return nil
 
 }
