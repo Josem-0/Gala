@@ -202,6 +202,7 @@ func IsAutostartEnabled() bool {
 }
 
 func onExit() {
+	os.Exit(0)
 }
 
 func openConfigJSON() {

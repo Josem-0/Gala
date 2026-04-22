@@ -98,9 +98,9 @@ func MonitorMusic(statusItem *systray.MenuItem, conf *config.Config) {
 		statusChanged := IsPlaying != lastPlayState
 
 		if songChanged || statusChanged {
-			UpdateTrack(Title, Artist, Album, AppID, Position, Duration, IsPlaying)
+			if Title != "" && IsAllowedApp(AppID) && Artist != "" {
+				UpdateTrack(Title, Artist, Album, AppID, Position, Duration, IsPlaying)
 
-			if Title != "" && IsAllowedApp(AppID) {
 				select {
 				case TrackEventChan <- GetTrack():
 				default:
